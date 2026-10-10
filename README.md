@@ -14,3 +14,4 @@ A structured collection of checklists, study guides, and exercises for frontend 
 - [Frontend System Design](frontend-system-design/README.md)
 - [Coding Exercises](coding-exercises/README.md)
 - [Behavioral Interviews](behavioral/README.md)
+- [Projects](projects/README.md)

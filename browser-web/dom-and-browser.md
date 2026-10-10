@@ -1,4 +1,4 @@
-# JavaScript Interview Study Guide: DOM and the Browser
+# JavaScript Interview Study Guide: DOM, Events, and Rendering
 
 Concise, answer-first explanations you can say aloud in an interview. Use the examples when the interviewer asks you to go deeper.
 
@@ -34,11 +34,6 @@ Nodes include `Document`, `Element`, `Text`, `Comment`, and `DocumentFragment`. 
 - `element.closest(selector)` — nearest ancestor (including self) that matches
 - `element.matches(selector)`
 
-**Walk**
-
-- `parentElement`, `children`, `firstElementChild`, `nextElementSibling`
-- `childNodes` includes text/comment; `children` is elements only
-
 **Create / insert / remove**
 
 ```javascript
@@ -49,7 +44,7 @@ li.remove();
 el.replaceWith(other);
 ```
 
-Prefer `textContent` for plain text (no HTML parse). `innerHTML` parses markup and is an **XSS** footgun with untrusted strings. `insertAdjacentHTML` is the same risk.
+**Prefer** `textContent` **for plain text (no HTML parse).** `innerHTML` **parses markup and is an XSS footgun with untrusted strings.** `insertAdjacentHTML` **is the same risk. - important for security**
 
 **Attributes vs properties**
 
@@ -72,6 +67,15 @@ For most events the path is:
 2. **Target** phase — the element that was the event target
 3. **Bubble** phase — target → parent → … → document → window
 
+Capture is the walk **toward** the target. Target is the destination. Bubble is the walk **back out**.
+
+Target is a separate phase because:
+
+- The event’s **destination** is not an ancestor step
+- Capture-registered and bubble-registered listeners on the target both run **here** (`AT_TARGET`)
+- Some events never bubble, but they still run listeners on the target
+- On the target, **capture listeners run before non-capture listeners**. Both report `AT_TARGET`. Listeners with the same `capture` value still run in registration order.
+
 ```javascript
 parent.addEventListener("click", handler, true);  // capture
 parent.addEventListener("click", handler, false); // bubble (default)
@@ -82,13 +86,148 @@ parent.addEventListener("click", handler, { capture: true, once: true, passive: 
 `event.currentTarget` — the node whose listener is running now.  
 `event.eventPhase` — `CAPTURING_PHASE` / `AT_TARGET` / `BUBBLING_PHASE`.
 
-Some events **do not bubble** (`focus`, `blur`, `load`, `mouseenter` / `mouseleave`). Use `focusin` / `focusout` if you need focus to bubble. `mouseover` bubbles; `mouseenter` does not.
+**Some events do not bubble** (`focus`, `blur`, `load`, `mouseenter` / `mouseleave`). Use `focusin` / `focusout` if you need focus to bubble. `mouseover` bubbles; `mouseenter` does not. — important
 
-The listener on the target runs in the target phase (both capture and bubble listeners on the target fire there; order is registration order in modern browsers).
+### What do the `addEventListener` options mean?
+
+The third argument is either a **boolean** (`useCapture`) or an **options object**. The boolean is the old form of `capture` only.
+
+```javascript
+element.addEventListener(type, listener, useCapture);
+element.addEventListener(type, listener, {
+  capture: false,
+  once: false,
+  passive: false,
+  signal, // AbortSignal
+});
+```
+
+**`capture`** (default `false`) — which trip the listener is on.
+
+- `false` — bubble phase (or target, if this node *is* the target)
+- `true` — capture phase (or target, if this node *is* the target)
+
+The same function can be registered twice, once per phase. They are **two listeners**:
+
+```javascript
+el.addEventListener("click", onClick, true);
+el.addEventListener("click", onClick, false);
+// both run if el is on the path; at the target both run in target phase
+```
+
+`removeEventListener` must match **the same function reference and the same `capture` value**. `once` / `passive` / `signal` do not identify the listener.
+
+```javascript
+el.addEventListener("click", onClick, { capture: true });
+el.removeEventListener("click", onClick);              // misses it (capture defaults to false)
+el.removeEventListener("click", onClick, { capture: true }); // removes
+```
+
+**`once`** — run at most one time, then the browser removes the listener. Useful for “first click”, one-shot load, or a promise that waits for an event.
+
+```javascript
+button.addEventListener("click", onSubmit, { once: true });
+```
+
+**`passive: true`** — you promise **not** to call `preventDefault()`. The browser can start scrolling/zooming immediately instead of waiting to see if JS will cancel the default. That is why Chrome treats `touchstart` / `touchmove` / `wheel` on `document`/`window` as passive by default.
+
+```javascript
+window.addEventListener("wheel", onWheel, { passive: true }); // scroll stays smooth
+window.addEventListener("touchstart", onTouch, { passive: false }); // can preventDefault (jank risk)
+```
+
+Calling `preventDefault()` inside a passive listener is ignored (and may warn). Use `passive: false` only when you actually need to block scroll or swipe.
+
+**`signal`** — `AbortSignal`. When you abort, the listener is removed. Same idea as cancelling `fetch`.
+
+```javascript
+const controller = new AbortController();
+el.addEventListener("click", onClick, { signal: controller.signal });
+controller.abort(); // listener gone; no need to keep the function reference
+```
+
+### When would you use each option in practice?
+
+Default (`capture: false`) is what you want **most of the time**: button clicks, form submit, event **delegation** on a list. The inner node is already `event.target` by the time the parent handler runs.
+
+**`capture: true`** — run before the target (and before bubbling widgets).
+
+Use it when an ancestor must **see or stop** the event first:
+
+- Global shortcuts / “click outside” that must run even if a child calls `stopPropagation` on the way up (capture on `document` still runs **before** that child)
+- A modal overlay that should swallow clicks before they hit the page underneath
+- Analytics / debug logging of every click before app handlers
+- Focus traps and `focusin` in capture if you need to catch focus as it enters a subtree
+
+```javascript
+document.addEventListener(
+  "click",
+  (event) => {
+    if (!dropdown.contains(event.target)) closeDropdown();
+  },
+  true
+);
+```
+
+Do **not** use capture for normal delegation unless you have a reason. It is harder to reason about than bubble + `closest`.
+
+**`once: true`** — one-shot setup, then forget it.
+
+- First visit tooltip / “got it” that should never fire again on that node
+- Wait for `DOMContentLoaded` or a video `canplay` without removing the listener yourself
+- Wrap an event in a Promise:
+
+```javascript
+function nextClick(el) {
+  return new Promise((resolve) => {
+    el.addEventListener("click", resolve, { once: true });
+  });
+}
+```
+
+- Prefetch or open a socket on the **first** user gesture (autoplay / clipboard policies)
+
+**`passive: true`** — observe scroll/touch without blocking the browser.
+
+- Scroll-spy, parallax, “how far did we scroll”, lazy-load sentinels — you only **read** `scrollY` / `touch` position
+- `wheel` / `touchmove` listeners on `window` or a long list — keeps 60fps scrolling
+
+```javascript
+list.addEventListener("scroll", updateShadow, { passive: true });
+```
+
+Use `passive: false` only for custom pull-to-refresh, a map that must steal the swipe, or preventing pinch-zoom on a canvas. If you are not calling `preventDefault`, mark it **passive**.
+
+**`signal`** — the listener’s lifetime is a component, a page, or a mode.
+
+- React/Vue unmount: abort in `useEffect` cleanup instead of storing the function for `removeEventListener`
+- One `AbortController` for **all** listeners of a modal (click, keydown, resize) — `abort()` on close
+- Same signal as `fetch` so leaving the page cancels both the request and the UI listeners
+- “Edit mode on” → attach; “edit mode off” → abort
+
+```javascript
+function bindModal(dialog) {
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  dialog.addEventListener("keydown", onEsc, { signal });
+  document.addEventListener("click", onOutside, { capture: true, signal });
+
+  return () => controller.abort();
+}
+```
+
+You can combine them: `{ capture: true, once: true, signal }` is valid. Typical combo in a SPA: **`{ signal }`** on unmount, **`passive: true`** on scroll, **`capture: true`** only for outside-click / overlay.
+
+Interview extras:
+
+- Capture on `document` / `window` runs **before** target handlers — useful for logging, shortcuts, or “stop this click before the widget sees it.”
+- Delegation usually uses the **bubble** default so the real `event.target` is already the inner node.
+- `mouseenter` / `mouseleave` do not bubble, so delegation needs `mouseover` / `mouseout` (and extra filtering) or a listener on each node.
 
 ---
 
-## Event Delegation - advanced topic
+## Event Delegation — advanced topic
 
 ### What is event delegation and why use it?
 
@@ -116,11 +255,11 @@ Caveats: the event must **bubble** (or you listen in capture). `closest` is safe
 
 ### How do they differ?
 
-`**event.preventDefault()**` — cancel the **browser’s default action**: following a link, submitting a form, checking a checkbox, typing in a field, context menu, etc. The event **still propagates**.
+**`event.preventDefault()`** — cancel the **browser’s default action**: following a link, submitting a form, checking a checkbox, typing in a field, context menu, etc. The event **still propagates**.
 
-`**event.stopPropagation()**` — stop the event from reaching **other listeners on ancestors** (and remaining capture/bubble path). Default action **can still happen**.
+**`event.stopPropagation()`** — stop the event from reaching **other listeners on ancestors** (and remaining capture/bubble path). Default action **can still happen**.
 
-`**event.stopImmediatePropagation()**` — also skip **other listeners on the same node**.
+**`event.stopImmediatePropagation()`** — also skip **other listeners on the same node**.
 
 ```javascript
 form.addEventListener("submit", (event) => {
@@ -135,11 +274,9 @@ link.addEventListener("click", (event) => {
 
 `event.defaultPrevented` is true after `preventDefault`. For **passive** listeners (`{ passive: true }`, common on `touchstart` / `wheel` for scroll performance), calling `preventDefault` is ignored and may warn.
 
-`return false` in `onclick` HTML / jQuery does both preventDefault and stopPropagation; in `addEventListener` a `return false` does **not**.
-
 ---
 
-## Reflow, Repaint, and Compositing - important
+## Reflow, Repaint, and Compositing — important
 
 ### What is the rendering pipeline after a DOM change?
 
@@ -157,7 +294,72 @@ Rough pipeline:
 
 **Compositing** can animate `transform` and `opacity` on their own layer **without** layout or paint of the whole document. That is why `transform: translateX` is preferred over `left` for animation.
 
-### What is layout thrashing? - important
+### What does each stage actually do?
+
+The browser does not paint the DOM directly. It builds a **render tree** (visible nodes + computed style; `display: none` is out), then turns that into pixels.
+
+```text
+JS / CSS change
+    → Style (which rules apply, computed values)
+    → Layout (where each box is: x, y, width, height)
+    → Paint (draw each layer: text, background, border, shadow, image)
+    → Composite (GPU stacks layers: order, opacity, transform, scroll)
+```
+
+A later stage can run **without** an earlier one:
+
+| You change | Style | Layout | Paint | Composite |
+| --- | --- | --- | --- | --- |
+| `width`, `height`, `margin`, `font-size`, DOM insert/remove | yes | yes | yes | yes |
+| `color`, `background`, `box-shadow`, `visibility` | yes | no | yes | yes |
+| `transform`, `opacity` (element already on its own layer) | yes | no | no | yes |
+
+`visibility: hidden` still occupies layout space and can paint. `display: none` skips layout and paint. `opacity: 0` still participates in hit-testing unless you also disable pointer events.
+
+**Style** is “which CSS wins and what are the used values.” It is cheaper than layout but not free: a huge stylesheet, or a selector that forces the engine to walk many nodes (`*` + complex descendant rules), shows up as **Recalculate Style** in DevTools.
+
+**Layout (reflow)** answers geometry. One box’s size often depends on its parent, siblings, and text. Changing the document width, a font, or inserting a node near the top can **invalidate** a large subtree, not just that node. Percentage heights, tables, and floats are classic “layout is global” cases. Flex and grid are still layout; they are not compositor-only.
+
+**Paint (repaint)** rasterizes into **layers** (bitmaps or display lists). Text, gradients, shadows, and images are paint. A color change on a box that did not move is paint without layout. Paint is still main-thread work and can be large if the layer is big.
+
+**Composite** is the GPU combining those layers into the frame you see: stacking order, `opacity`, `transform`, some filters, and scrolling a layer that was already painted. If the pixels did not change, the GPU only moves or fades the layer. That is the cheap path for animation.
+
+### What creates a layer, and why does that matter?
+
+The browser **promotes** an element to its own compositor layer when it needs to, for example:
+
+- `transform` other than `none` (including `translateZ(0)` / `translate3d` — the old “hack”)
+- `opacity` < 1 in some cases, or an opacity animation
+- `will-change: transform` or `will-change: opacity`
+- `position: fixed` / `sticky` in many cases
+- `<video>`, `<canvas>`, `<iframe>`, and CSS filters
+
+A layer lets `transform` / `opacity` skip layout and paint **of that element’s pixels**. It does **not** make layout of the rest of the page free, and it costs **GPU memory**. Promoting everything (`will-change` on every card) can make scrolling worse, not better.
+
+`will-change` is a hint for the **next** animation, not a permanent class on the whole tree. Add it just before the animation, remove it after.
+
+### Which CSS properties hit which stage?
+
+Say this grouping in an interview:
+
+- **Layout:** `width`, `height`, `padding`, `margin`, `border-width`, `top`/`left` when `position` is not `static`, `font-size`, `display`, `flex-*`, `grid-*`, content that changes line breaks
+- **Paint only:** `color`, `background-color`, `background-image`, `box-shadow`, `outline`, `border-color` (width unchanged)
+- **Composite (if layered):** `transform`, `opacity`
+
+Animating `left` or `width` means **layout every frame** (and usually paint). Animating `transform: translateX` means **composite every frame**. Same visual, different cost. That is also why a `transform` on an ancestor changes the containing block for `position: fixed` — the element is now in a transformed layer, not the viewport.
+
+### How do you see this in DevTools?
+
+Performance panel, Main thread:
+
+- **Recalculate Style** — style
+- **Layout** — reflow (purple)
+- **Paint** — raster
+- **Composite Layers** — GPU
+
+A long purple **Layout** bar inside a click handler is usually thrashing or a forced synchronous layout. Rendering panel: **Paint flashing** (green) shows repaints; **Layer borders** shows compositor layers.
+
+### What is layout thrashing? — important
 
 Interleaving **writes** and **reads** of layout:
 
@@ -174,7 +376,7 @@ Minimize reflow: change classes once, use `transform`, avoid querying layout in 
 
 ---
 
-## Critical Rendering Path - good to know
+## Critical Rendering Path — good to know
 
 ### What is the Critical Rendering Path (CRP)?
 
@@ -196,273 +398,7 @@ Optimize CRP:
 - Images: `width`/`height` or `aspect-ratio`, `srcset`, lazy-load below the fold (`loading="lazy"`)
 - Avoid `@import` in CSS (extra round trip)
 
-**First paint** ≠ **usable page**. See Core Web Vitals below.
-
----
-
-## Cookies, `localStorage`, `sessionStorage`, IndexedDB
-
-### How do you choose a storage API? - veryu important
-
-
-|                | Cookies                                                                | `localStorage` | `sessionStorage`                                    | IndexedDB                 |
-| -------------- | ---------------------------------------------------------------------- | -------------- | --------------------------------------------------- | ------------------------- |
-| Sent to server | Yes (unless `HttpOnly` still sent; all non-`HttpOnly` too). Limit size | No             | No                                                  | No                        |
-| Capacity       | ~4 KB per cookie                                                       | ~5 MB          | ~5 MB                                               | Large (100s of MB, quota) |
-| Persistence    | `Expires` / `Max-Age`; session cookie if omitted                       | Until cleared  | Tab/window (duplicated on restore in some browsers) | Until cleared             |
-| API            | `document.cookie` string; better `Set-Cookie` from HTTP                | Sync strings   | Sync strings                                        | Async, structured data    |
-| JS access      | Not if `HttpOnly`                                                      | Yes            | Yes                                                 | Yes                       |
-
-
-**Cookies** — session id, CSRF token. Set from the **server** with `Set-Cookie`. Flags:
-
-- `HttpOnly` — JS cannot read (mitigates XSS stealing the cookie)
-- `Secure` — HTTPS only
-- `SameSite=Lax` / `Strict` / `None` — CSRF control (`None` needs `Secure`)
-- `Path`, `Domain`
-
-`**localStorage` / `sessionStorage**` — `setItem` / `getItem` / `removeItem`; **strings only** (`JSON.stringify`). Same-origin. Sync and can **block** the main thread on large data. `storage` event fires in **other** tabs for `localStorage`.
-
-**IndexedDB** — large structured data, indexes, transactions, async. Use for offline caches, drafts, large client DBs. Wrappers (idb) hide the verbose API.
-
-**Do not** put secrets or access tokens in `localStorage` (any XSS reads them). Prefer memory or `HttpOnly` cookies for session.
-
----
-
-## `fetch` vs `XMLHttpRequest`
-
-### What are the main differences?
-
-`**fetch**`
-
-- Promise-based; pairs with `async/await`
-- Request/response are **streamable** (`body` is a `ReadableStream`)
-- `AbortController` to cancel
-- **Does not reject** on HTTP 404/500 — only on network failure or abort. Check `response.ok` / `status`
-- No progress events for upload/download in the basic API (XHR has `progress`; for fetch, Streams / extra APIs)
-- Cookies: `credentials: "same-origin"` default; `"include"` for CORS with cookies
-- Cannot easily observe **request** progress the way XHR `upload.onprogress` does
-
-`**XMLHttpRequest**`
-
-- Callbacks / events (`onreadystatechange`, `onload`)
-- `xhr.status` and you typically treat non-2xx in the same `load` handler
-- `xhr.upload.onprogress` — classic file upload bars
-- Synchronous XHR exists (`open(..., false)`) — **never use it** (blocks the thread)
-
-```javascript
-const res = await fetch("/api", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(payload),
-  signal: controller.signal,
-});
-if (!res.ok) throw new Error(res.status);
-const data = await res.json();
-```
-
-Interview one-liner: **prefer `fetch` today; know XHR for progress and legacy code; neither is a WebSocket.**
-
----
-
-## WebSocket, Server-Sent Events, and Polling
-
-### How do you get live data from the server?
-
-**Short polling** — client `fetch`s every N ms. Simple, wasteful, latency up to N. Easy with HTTP cache/CDN sometimes against you.
-
-**Long polling** — client opens a request; server **holds it** until an event or timeout; client opens the next. Fallback when WS is blocked.
-
-**Server-Sent Events (`EventSource`)**
-
-- HTTP response, **server → client** stream of `text/event-stream`
-- Auto-reconnect, event ids
-- Text/UTF-8; typically **GET** only
-- Good for notifications, feeds, one-way logs
-
-**WebSocket**
-
-- After HTTP upgrade, **full-duplex** socket (client and server both send)
-- Binary and text
-- You handle reconnect, heartbeat, backpressure
-- Chat, collab cursors, multiplayer, bidirectional streams
-
-```javascript
-const ws = new WebSocket("wss://example.com/ws");
-ws.addEventListener("message", (e) => JSON.parse(e.data));
-ws.send(JSON.stringify({ type: "ping" }));
-```
-
-```javascript
-const es = new EventSource("/events");
-es.addEventListener("notice", (e) => console.log(e.data));
-```
-
-Choose **SSE** for one-way server push over HTTP. Choose **WebSocket** when the client must send often. Polling is the compatible baseline.
-
----
-
-## Web Workers and Service Workers
-
-### What is each worker for?
-
-**Web Worker**
-
-- Extra **thread** for CPU work (parse, crypto, canvas pixel buffers, compression)
-- No DOM, no `window`. Talk via `postMessage` (structured clone; `Transferable` for buffers)
-- `new Worker(url)` or `new Worker(url, { type: "module" })`
-- Dedicated vs **SharedWorker** (multiple tabs)
-
-Use when a job would **block the main thread** (INP / jank).
-
-**Service Worker**
-
-- A worker that sits on the **network path** of an origin (after HTTPS + register)
-- Can **intercept `fetch`**, cache responses, enable **offline**, push notifications, background sync
-- Lifecycle: `install` → `activate` → `fetch`. Wait until `clients.claim` / `skipWaiting` if you need control immediately
-- Not for arbitrary CPU unless combined with other workers; it can be killed when idle
-
-```javascript
-navigator.serviceWorker.register("/sw.js");
-```
-
-```javascript
-// sw.js
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
-});
-```
-
-Not the same as a Web Worker: **SW is about network/cache/offline; WW is about CPU off the UI thread.**
-
----
-
-## Browser Caching
-
-### How does HTTP caching work?
-
-The browser (and sometimes a CDN) may reuse a response instead of hitting the origin.
-
-**Freshness (does not revalidate)**
-
-- `Cache-Control: max-age=31536000, immutable` — hashed static assets (`app.abc123.js`)
-- `Expires` — older equivalent
-
-**Revalidation**
-
-- `Cache-Control: no-cache` — **must revalidate** (misleading name; it can still store)
-- `Cache-Control: no-store` — do not write to disk (private data)
-- `ETag` / `If-None-Match` → `304 Not Modified`
-- `Last-Modified` / `If-Modified-Since`
-
-`**private` vs `public**` — whether shared caches (CDN) may store.
-
-**Heuristic caching** exists if the server sends little cache info; do not rely on it.
-
-HTML is often `no-cache` or short `max-age` so users get new asset **URLs**. Assets get **content hashes** and long `max-age`.
-
-Other layers: memory cache, disk HTTP cache, **Service Worker cache**, bfcache (`pageshow` / `pagehide`, `event.persisted`) for back/forward.
-
-`fetch` / XHR: default cache mode follows HTTP rules; `cache: "no-store"` bypasses.
-
----
-
-## Core Web Vitals: LCP, INP, CLS
-
-### What do LCP, INP, and CLS measure?
-
-Google’s field metrics for **loading**, **interactivity**, and **visual stability**.
-
-**LCP (Largest Contentful Paint)** — when the largest above-the-fold image or text block appears. Aim **≤ 2.5 s** (good). Improve: faster TTFB, preload hero image, don’t wait on huge JS, sized images, CDN.
-
-**INP (Interaction to Next Paint)** — replaced FID. Latency from click/key/tap until the **next paint** that reflects the interaction (input delay + processing + present). Aim **≤ 200 ms**. Improve: break up long tasks, fewer hydration costs, workers for heavy JS, avoid layout thrash in handlers.
-
-**CLS (Cumulative Layout Shift)** — how much visible content **jumps**. Aim **≤ 0.1**. Improve: `width`/`height` on images and embeds, reserve space for ads/fonts (`font-display`, fallback metrics), don’t inject DOM above existing content.
-
-Say **field data** (CrUX, RUM) vs **lab** (Lighthouse): lab is a phone simulation; vitals for ranking/UX are field.
-
-Related: TTFB, FCP, TTI (older), TBT in lab as a proxy for main-thread blocking.
-
----
-
-## Performance and Memory in DevTools
-
-### What do you actually open in an interview / on the job?
-
-**Performance (timeline)**
-
-- Record a load or an interaction
-- See **Main** thread: Evaluate script, Recalculate style, Layout, Paint, Commit
-- Long tasks (red triangles / tasks > 50 ms)
-- **INP-style** debugging: click the interaction, see handler duration
-- FPS, layers, `requestAnimationFrame`
-
-**Network**
-
-- Waterfall, blocking vs async scripts, TTFB vs download
-- Disable cache while DevTools is open
-- `Priority`, initiator, headers (`cache-control`)
-
-**Lighthouse / Performance insights**
-
-- Lab scores, CRP opportunities, unused JS/CSS
-
-**Rendering** (more tools)
-
-- Paint flashing, layout shift regions (CLS), FPS meter, layer borders
-
-**Memory**
-
-- **Heap snapshot** — retained size, detached DOM nodes, comparison after actions
-- **Allocation instrumentation** — who allocates over time
-- **Performance monitor** — JS heap, DOM nodes, listeners live
-
-Typical leaks: detached nodes still referenced in a Map, uncleared `setInterval`, global caches, closures over large data, listeners on `document` never removed.
-
-**Application** panel — storage, service workers, cache storage, unregister SW.
-
----
-
-## HTTP, DNS, and TLS (short)
-
-### What happens when you type a URL?
-
-1. **DNS** — hostname → IP (cache: browser, OS, resolver)
-2. **TCP** connect (or QUIC for HTTP/3)
-3. **TLS** handshake (HTTPS) — certificates, keys; session resumption helps later
-4. **HTTP** request (`GET /`, headers, cookies)
-5. Response: HTML, then dependent CSS/JS/images (new connections or multiplexing on HTTP/2/3)
-
-**HTTP/2** multiplexes streams on one connection (no head-of-line blocking at HTTP layer; TCP still can block). **HTTP/3** uses QUIC/UDP to reduce that.
-
-Status families: 2xx success, 3xx redirect, 4xx client, 5xx server. `301`/`308` vs `302`/`307` (method preservation).
-
----
-
-## Same-origin Policy, CORS, CSP
-
-### What is an origin and what does SOP protect?
-
-Origin = **scheme + host + port**. `https://a.com` ≠ `http://a.com` ≠ `https://a.com:441`.
-
-**Same-origin policy** stops a page’s JS from reading another origin’s DOM or typical responses. Cookies are partitioned by site/origin rules plus `SameSite`.
-
-**CORS** is the server **opting in** so `fetch` from origin A can read origin B’s response:
-
-- Simple requests vs **preflight** `OPTIONS` (`Access-Control-Request-Method/Headers`)
-- `Access-Control-Allow-Origin` (not `*` if `credentials: include`)
-- `Allow-Credentials`, `Allow-Methods`, `Allow-Headers`
-
-**CSP** (`Content-Security-Policy`) — which scripts, styles, images may load; `script-src 'self'` reduces XSS. `'unsafe-inline'` weakens it; nonces/hashes are stronger.
-
-**Common attacks**
-
-- **XSS** — attacker JS in your origin (trust HTML). Escape, CSP, `HttpOnly`
-- **CSRF** — browser sends cookies on cross-site form POST. `SameSite`, CSRF tokens, not using cookies for some APIs
-- **Clickjacking** — `X-Frame-Options` / `frame-ancestors`
-- **MIME sniffing** — `X-Content-Type-Options: nosniff`
+**First paint** ≠ **usable page**. See [Core Web Vitals](performance-and-devtools.md).
 
 ---
 
@@ -480,10 +416,10 @@ No. Use `preventDefault` for defaults. You often need **both** on a nested contr
 
 `left` triggers **layout** (and usually paint). `transform` can stay on the **compositor** if the element is on its own layer.
 
-### Why does `fetch` “succeed” on 500?
+---
 
-The network succeeded. HTTP errors are still `Response` objects. Check `res.ok`.
+## Related guides
 
-### Cookie vs `localStorage` for a token?
-
-If it must go to the server automatically, cookie (with `Secure`, `HttpOnly`, `SameSite`). If XSS is in scope, `localStorage` is readable by the attacker’s script. Neither replaces server-side session design.
+- [Storage, Auth, and Security](storage-auth-security.md) — cookies, tokens, CSRF, same-origin policy, CORS, and CSP
+- [Networking and Browser APIs](networking-and-browser-apis.md) — HTTP, DNS, TLS, fetch, realtime APIs, workers, and caching
+- [Performance and DevTools](performance-and-devtools.md) — Core Web Vitals and the Performance and Memory panels

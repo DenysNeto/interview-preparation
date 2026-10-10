@@ -36,7 +36,11 @@ A `div` / `span` has **no** role. CSS can make a `div` look like a button; it wi
 
 ---
 
+
+
 ## Forms, `label`, `button`, `input`, Native Validation
+
+
 
 ### How should a form be wired for accessibility and validation?
 
@@ -57,12 +61,12 @@ Every control needs a **programmatic name**. The reliable way is a `<label>` who
 </form>
 ```
 
-**`button`**
+`button`
 
 - `type="submit"` is the default **inside a form**. A button in a form without `type` will submit — set `type="button"` for JS-only actions.
 - Prefer `<button>` over `<div onclick>` or `<a href="#">` for actions. Links **navigate**; buttons **do**.
 
-**`input` types** that help mobile keyboards and validation: `email`, `url`, `tel`, `number`, `search`, `date`, `password`. Use `autocomplete` tokens (`name`, `email`, `current-password`) — browsers and password managers depend on them.
+`input` **types** that help mobile keyboards and validation: `email`, `url`, `tel`, `number`, `search`, `date`, `password`. Use `autocomplete` tokens (`name`, `email`, `current-password`) — browsers and password managers depend on them.
 
 **Native validation** (Constraint Validation API):
 
@@ -77,7 +81,11 @@ Every control needs a **programmatic name**. The reliable way is a `<label>` who
 
 ---
 
+
+
 ## Accessibility: Keyboard, Focus, ARIA, Screen Readers
+
+
 
 ### What do you actually guarantee for keyboard users?
 
@@ -111,27 +119,198 @@ ARIA **names, roles, and states** for AT when HTML is not enough. First rule: **
 
 Screen readers walk the **accessibility tree** (browser-derived from DOM + ARIA). They announce role, name, state. Test with VoiceOver / NVDA, not only Lighthouse.
 
+#### Простыми словами: что такое ARIA и зачем она
+
+**ARIA** (Accessible Rich Internet Applications) — атрибуты, которые объясняют вспомогательным технологиям то, чего не видно из голого HTML. Скринридер не «смотрит» на пиксели. Браузер строит **дерево доступности** и отдаёт ему роль, имя и состояние. ARIA дополняет это дерево, когда обычного тега мало.
+
+Кастомный блок, который выглядит как кнопка:
+
+```html
+<div>Menu</div>
+```
+
+Для скринридера это просто текст. Он не знает, что по нему можно нажать, что это кнопка и открыто ли меню. ARIA может это дописать:
+
+```html
+<div role="button" tabindex="0" aria-expanded="false" aria-controls="menu">
+  Menu
+</div>
+```
+
+Объявление будет примерно: «Menu, button, collapsed». Но ARIA **не добавляет поведение**. Клик, `Enter` / `Space`, фокус и смену `aria-expanded` всё равно пишете вы.
+
+Поэтому сначала нативный тег. У `<button>` уже есть роль, фокус и клавиатура; ARIA нужна только на недостающее состояние:
+
+```html
+<button type="button" aria-expanded="false" aria-controls="menu">Menu</button>
+```
+
+Правило: **если есть подходящий HTML-элемент, не подменяйте его ARIA.** Не пишите `<button role="button">`.
+
+**Role** — что это (`role="dialog"`). **Name** — как называется. **State** — в каком состоянии (`aria-expanded`, `aria-checked`, `aria-selected`, `aria-invalid`).
+
+Имя лучше брать из видимого текста. Если его нет, например на кнопке-иконке:
+
+```html
+<button type="button" aria-label="Close"><svg>...</svg></button>
+```
+
+Если заголовок уже есть на странице, не дублируйте строку, а сошлитесь на него:
+
+```html
+<h2 id="dialog-title">Delete account?</h2>
+<div role="dialog" aria-labelledby="dialog-title">...</div>
+```
+
+Порядок имени: видимый текст / `<label>` → `aria-labelledby` → `aria-label`.
+
+`aria-disabled="true"` только **сообщает** «недоступно». Кнопку оно не выключает. Для настоящей кнопки ставьте атрибут `disabled`.
+
+`aria-hidden="true"` прячет узел от дерева доступности, но оставляет его на экране — для декоративной иконки. `hidden` и `display: none` прячут и от глаз, и от скринридера. Не вешайте `aria-hidden` на элемент, который всё ещё получает фокус: клавиатура на него попадёт, а скринридер промолчит.
+
+Если текст появился без перезагрузки, скринридер может его не заметить. Для этого live region:
+
+```html
+<div role="status" aria-live="polite">Profile saved</div>
+<div role="alert">Payment failed</div>
+```
+
+`polite` / `role="status"` — сказать, когда речь освободится (сохранено, результаты загрузились). `role="alert"` — срочная ошибка, перебивает. Не ставьте alert на каждый тост, иначе скринридер будет постоянно перебивать.
+
+ARIA нужна для вкладок, диалогов, combobox, меню и уведомлений, у которых нет одного готового тега. Не нужна для `<button>`, `<a href>`, `<input>` и `<nav>`: роль и поведение уже есть.
+
+**На собесе:** ARIA дописывает дереву доступности роль, имя и состояние. Она не заменяет семантический HTML и не включает клавиатуру. Сначала нативный элемент, ARIA — только то, чего в теге нет.
+
+#### Список `aria-*` атрибутов
+
+`role` — не `aria-*`, но часть той же модели: говорит, **что** это за элемент (`button`, `dialog`, `tab`). Атрибуты ниже говорят **как называется**, **в каком состоянии** и **с чем связан**.
+
+Список по [WAI-ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/) (рекомендация W3C, июнь 2023). Не все атрибуты можно вешать на любой тег: у роли есть свой набор.
+
+**Имя и описание**
+
+
+| Атрибут                       | Зачем                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| `aria-label`                  | Имя строкой, когда видимого текста нет (кнопка-иконка)                               |
+| `aria-labelledby`             | Имя из текста другого элемента по `id`                                               |
+| `aria-describedby`            | Дополнение к имени: подсказка, формат, текст ошибки                                  |
+| `aria-description`            | То же текстом, без отдельного элемента (поддержка слабее, чем у `describedby`)       |
+| `aria-details`                | Ссылка на развёрнутое описание, не краткая подсказка                                 |
+| `aria-roledescription`        | Своё слово вместо стандартной роли («Звезда» вместо `slider`). Редко и осторожно     |
+| `aria-braillelabel`           | Отдельное имя для брайля, если обычное слишком длинное. ARIA 1.3, не базовый минимум |
+| `aria-brailleroledescription` | Описание роли для брайля. Тоже ARIA 1.3                                              |
+
+
+**Состояние виджета**
+
+
+| Атрибут                | Зачем                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `aria-checked`         | `true` / `false` / `mixed` у checkbox, radio, switch, пункта меню            |
+| `aria-pressed`         | Кнопка-переключатель нажата или нет                                          |
+| `aria-expanded`        | Раскрыто ли то, чем управляет кнопка (меню, аккордеон)                       |
+| `aria-selected`        | Выбран пункт tab, option, row                                                |
+| `aria-disabled`        | Сообщить «недоступно». Сам клик не блокирует — для кнопки нужен `disabled`   |
+| `aria-hidden`          | Убрать из дерева доступности, на экране оставить. Не на фокусируемом узле    |
+| `aria-invalid`         | Поле с ошибкой: `true` или `grammar` / `spelling`                            |
+| `aria-required`        | Обязательное поле, если нет нативного `required`                             |
+| `aria-readonly`        | Можно смотреть, нельзя менять                                                |
+| `aria-placeholder`     | Подсказка пустого поля. Не замена `<label>`                                  |
+| `aria-busy`            | Область обновляется, скринридеру лучше подождать                             |
+| `aria-current`         | Текущий пункт: `page`, `step`, `location`, `date`, `time`, `true`            |
+| `aria-haspopup`        | По активации откроется меню, dialog, listbox, tree, grid                     |
+| `aria-modal`           | `true` на dialog: остальная страница для AT недоступна, пока диалог открыт   |
+| `aria-autocomplete`    | Как дополняется ввод: `none`, `inline`, `list`, `both`                       |
+| `aria-multiline`       | Поле на несколько строк                                                      |
+| `aria-multiselectable` | В списке или гриде можно выбрать несколько                                   |
+| `aria-orientation`     | `horizontal` или `vertical` у slider, tablist, separator                     |
+| `aria-sort`            | Сортировка колонки: `ascending`, `descending`, `none`, `other`               |
+| `aria-level`           | Уровень в дереве или у заголовка                                             |
+| `aria-keyshortcuts`    | Какие клавиши вызывают действие (`Alt+S`). Не назначает их, только объявляет |
+
+
+**Числовые виджеты** (`slider`, `spinbutton`, `meter`, `progressbar`, `scrollbar`)
+
+
+| Атрибут          | Зачем                                     |
+| ---------------- | ----------------------------------------- |
+| `aria-valuenow`  | Текущее число                             |
+| `aria-valuemin`  | Минимум                                   |
+| `aria-valuemax`  | Максимум                                  |
+| `aria-valuetext` | Текст вместо числа («половина», «громко») |
+
+
+**Связи между элементами**
+
+
+| Атрибут                 | Зачем                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `aria-controls`         | Этот элемент управляет другим (`id` меню или панели)                           |
+| `aria-owns`             | Дочерний в дереве доступности, хотя в DOM он не внутри                         |
+| `aria-activedescendant` | Какой потомок сейчас активен, фокус остаётся на контейнере (listbox, combobox) |
+| `aria-flowto`           | Куда логично перейти дальше, не по порядку DOM                                 |
+| `aria-errormessage`     | `id` текста ошибки. Имеет смысл вместе с `aria-invalid="true"`                 |
+| `aria-posinset`         | Позиция в наборе, если не все элементы в DOM (виртуальный список)              |
+| `aria-setsize`          | Сколько всего элементов в этом наборе                                          |
+
+
+**Таблица и grid**
+
+
+| Атрибут             | Зачем                                 |
+| ------------------- | ------------------------------------- |
+| `aria-rowcount`     | Число строк, включая те, что не в DOM |
+| `aria-rowindex`     | Индекс строки                         |
+| `aria-rowindextext` | Текст вместо номера строки            |
+| `aria-rowspan`      | На сколько строк растянута ячейка     |
+| `aria-colcount`     | Число колонок                         |
+| `aria-colindex`     | Индекс колонки                        |
+| `aria-colindextext` | Текст вместо номера колонки           |
+| `aria-colspan`      | На сколько колонок растянута ячейка   |
+
+
+**Живые области**
+
+
+| Атрибут         | Зачем                                                             |
+| --------------- | ----------------------------------------------------------------- |
+| `aria-live`     | `off`, `polite` (когда освободится речь), `assertive` (перебить)  |
+| `aria-atomic`   | `true` — прочитать весь регион, не только изменившийся кусок      |
+| `aria-relevant` | Какие изменения объявлять: `additions`, `removals`, `text`, `all` |
+
+
+**Устарели, не используйте**
+
+
+| Атрибут           | Почему                                       |
+| ----------------- | -------------------------------------------- |
+| `aria-grabbed`    | Старый drag-and-drop. В ARIA 1.1+ deprecated |
+| `aria-dropeffect` | Куда можно бросить. Тоже deprecated          |
+
+
+На собесе не нужно перечислять все сорок. Достаточно групп: **имя** (`label` / `labelledby` / `describedby`), **состояние** (`expanded`, `checked`, `selected`, `invalid`, `hidden`), **связь** (`controls`, `activedescendant`, `errormessage`), **live** (`live`, `atomic`). Остальное — когда строите grid, tree или slider без нативного тега.
+
 ---
 
-## Color, Motion, and AT Testing
 
-### What else do interviewers expect besides “use ARIA”?
 
-- **Contrast:** WCAG 2.x ~ **4.5:1** for normal text, **3:1** for large text and UI components. Don’t rely on color alone (errors: icon + text).
-- **`prefers-reduced-motion`:** cut or shorten animation; never convey info only by motion.
-- **`prefers-color-scheme`**, zoom to 200%, Windows high contrast / forced-colors (`forced-colors: active`).
-- Tools: axe / Lighthouse a11y, keyboard-only pass, one screen reader pass on the critical flow, heading outline (`h1`–`h6`).
+- Tools: axe / Lighthouse a11y, keyboard-only pass,
 
 ---
+
+
 
 ## Box Model and `box-sizing`
+
+
 
 ### How does the CSS box model work?
 
 For a box: **content → padding → border → margin**.
 
-- **`content-box`** (default in the spec): `width` / `height` size **content only**. Padding and border add **outside**, so the visual size is larger than `width`.
-- **`border-box`:** `width` includes content + padding + border. Layout math matches the mock. Almost every codebase sets:
+- `content-box` (default in the spec): `width` / `height` size **content only**. Padding and border add **outside**, so the visual size is larger than `width`.
+- `border-box`**:** `width` includes content + padding + border. Layout math matches the mock. Almost every codebase sets:
 
 ```css
 *,
@@ -147,11 +326,15 @@ Margin **collapses** between adjoining vertical margins of in-flow block boxes (
 
 ---
 
+
+
 ## `display`, `position`, and the Containing Block
+
+
 
 ### How do `display` and `position` change layout?
 
-**`display`** (two-value in modern CSS: outer + inner, e.g. `block flex`):
+`display` (two-value in modern CSS: outer + inner, e.g. `block flex`):
 
 - `block` — fills the row, breaks before/after
 - `inline` — flows with text; vertical `margin`/`padding` don’t do what people expect for spacing between lines
@@ -160,7 +343,7 @@ Margin **collapses** between adjoining vertical margins of in-flow block boxes (
 - `flex` / `grid` / `table` — formatting context for children
 - `contents` — the element’s box is skipped; children “promote” (a11y pitfalls)
 
-**`position`**
+`position`
 
 - `static` — default; `top`/`z-index` do nothing
 - `relative` — in flow; `top`/`left` offset **itself**; is a containing block for `absolute` children
@@ -172,7 +355,11 @@ Margin **collapses** between adjoining vertical margins of in-flow block boxes (
 
 ---
 
+
+
 ## Flexbox and Grid
+
+
 
 ### When do you use Flexbox vs Grid?
 
@@ -208,7 +395,11 @@ You can **nest** them: grid for the page, flex for the header contents.
 
 ---
 
+
+
 ## Responsive Design, Media Queries, Container Queries
+
+
 
 ### How do you make a UI that works across viewports?
 
@@ -251,7 +442,11 @@ Mobile-first: base = small screen; `min-width` adds complexity.
 
 ---
 
+
+
 ## Cascade, Specificity, and Inheritance
+
+
 
 ### How does the browser decide which CSS wins?
 
@@ -276,13 +471,17 @@ In order:
 button:hover { }   /* 0, 1, 1 */
 ```
 
-**Inheritance:** `color`, `font-*`, `line-height` inherit. `margin`, `padding`, `border`, `display` do **not**. `inherit` / `initial` / `unset` / `revert` / `revert-layer` force it.
+**Inheritance:** `color`, `font-`*, `line-height` inherit. `margin`, `padding`, `border`, `display` do **not**. `inherit` / `initial` / `unset` / `revert` / `revert-layer` force it.
 
 `!important` is a last resort; prefer lower-specificity defaults + layers + source order.
 
 ---
 
+
+
 ## Stacking Context and `z-index`
+
+
 
 ### Why does `z-index: 9999` sometimes still sit under another element?
 
@@ -304,7 +503,11 @@ For modals: create a **known** overlay root (`isolation` or a top-level portal) 
 
 ---
 
+
+
 ## Pseudo-classes and Pseudo-elements
+
+
 
 ### What is the difference?
 
@@ -326,7 +529,11 @@ button:focus-visible { outline: 2px solid; }
 
 ---
 
+
+
 ## CSS Modules, CSS-in-JS, Utility-First CSS
+
+
 
 ### How do modern apps scope and ship styles?
 
@@ -342,18 +549,22 @@ button:focus-visible { outline: 2px solid; }
 
 **Utility-first** (Tailwind): small classes in markup (`flex gap-2 px-4`). Fast UI iteration, design tokens in config, purge/content scan for unused CSS. Markup can get noisy; extract components when patterns repeat. Same cascade rules still apply.
 
-**Interview take:** there is no winner — talk **scoping, dead-code elimination, runtime cost, theming, and how you avoid 10-level specificity**. Native **`@layer`**, **`@scope`**, and shadow DOM are also scoping tools.
+**Interview take:** there is no winner — talk **scoping, dead-code elimination, runtime cost, theming, and how you avoid 10-level specificity**. Native `@layer`, `@scope`, and shadow DOM are also scoping tools.
 
 ---
 
+
+
 ## Animations and `prefers-reduced-motion`
+
+
 
 ### How do CSS animations work, and what should you animate?
 
 Two tools:
 
-- **`transition`** — interpolate when a property **changes** (hover, class toggle). Good for color, opacity, transform.
-- **`animation` + `@keyframes`** — a named sequence that can loop, delay, and alternate.
+- `transition` — interpolate when a property **changes** (hover, class toggle). Good for color, opacity, transform.
+- `animation` **+** `@keyframes` — a named sequence that can loop, delay, and alternate.
 
 ```css
 .drawer {
@@ -400,11 +611,15 @@ An OS-level preference (vestibular disorders, motion sensitivity). Honor it with
 
 Better than a global nuke when you can: **replace** motion with an instant state change, keep a short fade if it helps orientation, stop decorative loops (`animation: none` on carousels autoplay). In JS: `window.matchMedia("(prefers-reduced-motion: reduce)")` before `scrollIntoView({ behavior: "smooth" })` or Lottie.
 
-Also respect **`prefers-reduced-transparency`** / **`prefers-contrast`** where you ship glassmorphism-heavy UI.
+Also respect `prefers-reduced-transparency` / `prefers-contrast` where you ship glassmorphism-heavy UI.
 
 ---
 
+
+
 ## Image and Font Optimization
+
+
 
 ### How do you ship images without wrecking LCP and bytes?
 
@@ -428,11 +643,13 @@ Also respect **`prefers-reduced-transparency`** / **`prefers-contrast`** where y
 />
 ```
 
+
+
 ### How do you load web fonts without FOIT/FOUT disasters?
 
 **FOIT** — invisible text while the font is missing. **FOUT** — fallback font, then a swap (can cause **CLS** if metrics differ).
 
-- **`font-display: swap`** — show fallback fast (FOUT); good default for body text. **`optional`** — use the font only if it is already cached (great for repeat visits). **`block`** — longer invisible wait; usually avoid.
+- `font-display: swap` — show fallback fast (FOUT); good default for body text. `optional` — use the font only if it is already cached (great for repeat visits). `block` — longer invisible wait; usually avoid.
 - **Subset** (latin / cyrillic) and serve **woff2**.
 - **Preload** the one or two critical faces:
 
@@ -462,7 +679,11 @@ Interview one-liner: **preload the LCP image and the body woff2; lazy-load the r
 
 ---
 
+
+
 ## Must-Explain Questions
+
+
 
 ### `button` inside a `form` without `type` — what happens?
 
