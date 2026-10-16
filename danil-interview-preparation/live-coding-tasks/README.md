@@ -22,7 +22,7 @@ Format: UI / API / util / fullstack
 | [ ] | 07 | [Tabs / accordion](react/07-tabs-accordion.md) | M | 30–40m | UI |
 | [ ] | 08 | [Shopping cart (reducer)](react/08-shopping-cart.md) | M | 30–40m | UI |
 | [ ] | 09 | [Form validation](react/09-form-validation.md) | M | 30–40m | UI |
-| [ ] | 10 | [Fix buggy component](react/10-fix-buggy-component.md) | E–M | 15–25m | UI |
+| [ ] | 10 | [Fix buggy component](react/10-fix-buggy-component.md) (7 bugs) | E–M | 15–20m each | UI |
 
 ## Node.js (8)
 
