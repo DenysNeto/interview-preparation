@@ -15,3 +15,4 @@ A structured collection of checklists, study guides, and exercises for frontend 
 - [Coding Exercises](coding-exercises/README.md)
 - [Behavioral Interviews](behavioral/README.md)
 - [Projects](projects/README.md)
+- [Danil — Live Coding Prep (React / Node / Next)](danil-interview-preparation/README.md)
