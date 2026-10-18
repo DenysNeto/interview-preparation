@@ -10,7 +10,7 @@ Concise, answer-first explanations you can say aloud in an interview. Use the ex
 
 **JavaScript on a page runs on one main thread with a call stack. The stack is LIFO: the currently running function is on top, and it must finish before the one below it continues.**
 
-**Web APIs** (timers, `fetch`, DOM events, `queueMicrotask`, and so on) are provided by the host (the browser or Node). When you call `setTimeout` or `fetch`, JS only *schedules* work. The host does the wait or the I/O **outside** the stack.
+**Web APIs** (timers, `fetch`, DOM events, `queueMicrotask`, and so on) are provided by the host (the browser or Node). When you call `setTimeout` or `fetch`, JS only _schedules_ work. The host does the wait or the I/O **outside** the stack.
 
 When that work is ready, the host puts a **callback** into a queue. The **event loop** later takes it off the queue and runs it on the call stack, but only when the stack is empty.
 
@@ -20,7 +20,6 @@ console.log("A");
 setTimeout(() => console.log("B"), 0);
 
 Promise.resolve().then(() => console.log("C"));
-
 
 console.log("D");
 // A, D, C, B
@@ -32,15 +31,11 @@ Say this in an interview: **JS is single-threaded; async is scheduling, not mult
 
 ---
 
-
-
 ## Event Loop
-
-
 
 ### What is the event loop?
 
-The **event loop** is the host’s scheduler (browser or Node). JavaScript itself only runs whatever is currently on the **call stack**. The loop’s job is: *when the stack is empty, pick the next piece of scheduled work and put it on the stack.*
+The **event loop** is the host’s scheduler (browser or Node). JavaScript itself only runs whatever is currently on the **call stack**. The loop’s job is: _when the stack is empty, pick the next piece of scheduled work and put it on the stack._
 
 It does **not** run JS in parallel. It only decides **what runs next** after the current synchronous work finishes.
 
@@ -71,15 +66,16 @@ It does **not** run JS in parallel. It only decides **what runs next** after the
 1. Your script runs on the **call stack** (`main`).
 2. `setTimeout`, `fetch`, `addEventListener` only **register** work with **Web APIs**. The timer/network/DOM lives in the host, not on the stack.
 3. When the host is done, it **enqueues a callback**:
-  - Promise reactions → **microtask queue**
-  - timer / click / `postMessage` / most I/O → **macrotask (task) queue**
+
+- Promise reactions → **microtask queue**
+- timer / click / `postMessage` / most I/O → **macrotask (task) queue**
+
 4. The **event loop** waits until the stack is empty, then:
-  - empties **microtasks**
-  - may **paint / run** `requestAnimationFrame` (browser)
-  - takes **one macrotask**, runs it (that becomes the new “current script”)
-  - repeats
 
-
+- empties **microtasks**
+- may **paint / run** `requestAnimationFrame` (browser)
+- takes **one macrotask**, runs it (that becomes the new “current script”)
+- repeats
 
 ### How does one event-loop turn look?
 
@@ -102,11 +98,10 @@ console.log("script start");
 
 setTimeout(() => console.log("timeout"), 0); // 4
 
-Promise.resolve()
-  .then(() => {
-    console.log("promise 1");
-    Promise.resolve().then(() => console.log("promise 2"));
-  });
+Promise.resolve().then(() => {
+  console.log("promise 1");
+  Promise.resolve().then(() => console.log("promise 2"));
+});
 
 console.log("script end");
 ```
@@ -140,21 +135,15 @@ Split heavy work with `setTimeout(0)`, `scheduler.postTask`, or `requestIdleCall
 
 ---
 
-
-
 ## Microtasks and Macrotasks
 
-
-
 ### What is the difference between microtasks and macrotasks?
-
 
 |                 | Microtasks                                                                                        | Macrotasks (tasks)                                                                                                                    |
 | --------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Typical sources | `Promise.then` / `catch` / `finally`, `queueMicrotask`, `MutationObserver`, `await` continuations | `setTimeout`, `setInterval`, `setImmediate` (Node), I/O, UI events, `postMessage`, `requestAnimationFrame` (often treated separately) |
 | When they run   | After the current stack, **before** the next macrotask                                            | One (or a batch, depending on the host) **after** microtasks                                                                          |
 | Risk            | Starvation: an endless `.then` chain never yields to timers or paint                              | UI delay if a task is too long                                                                                                        |
-
 
 ```javascript
 setTimeout(() => console.log("macro"));
@@ -186,11 +175,7 @@ console.log(3);
 
 ---
 
-
-
 ## Promises: States and Chains
-
-
 
 ### What states can a Promise have?
 
@@ -204,13 +189,10 @@ Settling is **final**. A second `resolve`/`reject` is ignored.
 
 ```javascript
 const p = new Promise((resolve, reject) => {
-  resolve(1); // return 
-  resolve(2); // ignored
-  reject(new Error("no")); // ignored
+  resolve(1); // return return 1
+  reject(new Error("no")); // ignored return -1
 });
 ```
-
-
 
 ### How do `.then`, `.catch`, and `.finally` chains work?
 
@@ -247,11 +229,7 @@ An unhandled rejection. In browsers you get `unhandledrejection`; in Node it can
 
 ---
 
-
-
 ## `Promise.all`, `allSettled`, `race`, and `any`
-
-
 
 ### When should you use each combinator?
 
@@ -294,16 +272,12 @@ Racing a timeout **does not cancel** the original `fetch` unless you also use `A
 - Rejects only if **all** reject, with an `AggregateError`.
 - Use for “first successful mirror / fallback endpoint.”
 
-
 | Method       | Succeeds when    | Fails when                          |
 | ------------ | ---------------- | ----------------------------------- |
 | `all`        | all fulfill      | first reject                        |
 | `allSettled` | all have settled | (doesn't reject for input failures) |
 | `race`       | first settlement | first settlement if it is a reject  |
 | `any`        | first fulfill    | all reject                          |
-
-
-
 
 ### When would you actually use each one?
 
@@ -328,7 +302,7 @@ Home screen widgets (weather, notifications, ads). Sending a batch of emails/pus
 
 ```javascript
 const settled = await Promise.allSettled(
-  widgetIds.map((id) => fetchWidget(id))
+  widgetIds.map((id) => fetchWidget(id)),
 );
 
 const widgets = settled
@@ -356,7 +330,7 @@ async function fetchWithTimeout(url, ms) {
     return await Promise.race([
       fetch(url, { signal: controller.signal }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), ms)
+        setTimeout(() => reject(new Error("timeout")), ms),
       ),
     ]);
   } finally {
@@ -385,11 +359,7 @@ Interview one-liner: `all` **= all must succeed;** `allSettled` **= wait for all
 
 ---
 
-
-
 ## `async` / `await` and Error Handling
-
-
 
 ### How does `async/await` relate to Promises?
 
@@ -434,8 +404,6 @@ try {
 }
 ```
 
-
-
 ### How do you retry a failed request?
 
 Retry **idempotent** calls (usually GET) with a limit and backoff. Do not blindly retry POST without knowing the server semantics.
@@ -463,11 +431,7 @@ Interview follow-up: retry on network errors and 429/503, not on 400/404. Jitter
 
 ---
 
-
-
 ## Sequential vs Concurrent Requests
-
-
 
 ### How do you run requests one after another vs in parallel?
 
@@ -502,11 +466,7 @@ If you have 100 URLs, do not `Promise.all` all of them. Process a window of N in
 
 ---
 
-
-
 ## `AbortController` and Cancelling Requests
-
-
 
 ### How does `AbortController` work?
 
@@ -545,11 +505,7 @@ Or combine signals with `AbortSignal.any([userSignal, timeoutSignal])` where sup
 
 ---
 
-
-
 ## Timers: `setTimeout` and `setInterval`
-
-
 
 ### How do `setTimeout` and `setInterval` work?
 
@@ -584,11 +540,7 @@ In Node, `setImmediate` and `process.nextTick` are extra queues (`nextTick` is e
 
 ---
 
-
-
-## Debounce and Throttle
-
-
+## Debounce and Throttle ( repeat)
 
 ### What is debounce vs throttle?
 
@@ -603,13 +555,12 @@ function debounce(fn, wait) {
   let timer;
   return function (...args) {
     clearTimeout(timer);
-    timer = setTimeout(() => fn.apply(this, args), wait); // 300 ,  500 
+    timer = setTimeout(() => fn.apply(this, args), wait); // 300 ,  500
   };
 }
 
-
-
-function throttle(fn, wait) { //  300 ..500
+function throttle(fn, wait) {
+  //  300 ..500
   let last = 0;
   let timer;
   return function (...args) {
@@ -637,11 +588,7 @@ Interview extras:
 
 ---
 
-
-
 ## Race Conditions and Stale Responses
-
-
 
 ### What is an async race condition in the UI?
 
@@ -690,11 +637,7 @@ React 18+ `useTransition` / libraries like React Query handle much of this; stil
 
 ---
 
-
-
 ## Async Iterators and Streams
-
-
 
 ### What are async iterators?
 
@@ -718,19 +661,13 @@ for await (const items of pages("/api?page=1")) {
 }
 ```
 
-
-
 ### How do Web Streams relate to this?
 
 `fetch` bodies are `ReadableStream`s. You can process bytes as they arrive instead of buffering the whole payload. `AbortSignal` can cancel the reader. This matters for large downloads and backpressure.
 
 ---
 
-
-
 ## Must-Explain Questions
-
-
 
 ### Why does JavaScript need an event loop if it is single-threaded?
 
@@ -755,10 +692,6 @@ async function a() {
 a();
 
 console.log("end");
-
-
-
-
 ```
 
 Expected order:
@@ -784,8 +717,6 @@ It blocks **that async function’s continuation**, not the main thread and not 
 `AbortSignal.timeout` or `AbortController` plus `setTimeout` that calls `abort()`. `Promise.race` with a rejecting timer without abort leaves the network request alive.
 
 ---
-
-
 
 ## Practice
 

@@ -8,6 +8,7 @@ A structured collection of checklists, study guides, and exercises for frontend 
 - [Asynchronous JavaScript](async-js/README.md)
 - [TypeScript](typescript/README.md)
 - [React](react/README.md)
+- [Angular](angular/README.md)
 - [HTML, CSS, and Accessibility](html-css-accessibility/README.md)
 - [Browser and Web Platform](browser-web/README.md)
 - [Testing](testing/README.md)
@@ -16,3 +17,4 @@ A structured collection of checklists, study guides, and exercises for frontend 
 - [Behavioral Interviews](behavioral/README.md)
 - [Projects](projects/README.md)
 - [Danil — Live Coding Prep (React / Node / Next)](danil-interview-preparation/README.md)
+- [Denys — Coralogix Senior Frontend Prep (Angular / Observability)](denys-coralogix-interview-preparation/README.md)

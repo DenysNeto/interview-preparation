@@ -1,6 +1,7 @@
 # TypeScript
 
 - [ ] [TypeScript Q&A](typescript.md)
+- [ ] [Deep answers (EN)](typescript-deep-topics.md) — [подробные ответы (RU)](typescript-deep-topics.ru.md)
 - [ ] Type inference and annotations
 - [ ] `type` vs `interface`, structural typing
 - [ ] Unions, intersections, literals, discriminated unions
