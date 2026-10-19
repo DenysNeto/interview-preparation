@@ -99,6 +99,7 @@ Error middleware, status codes, async error wrapping, separation of concerns.
 ### Theory (45 мин)
 
 - [cheatsheets/nextjs-app-router-cheatsheet.md](cheatsheets/nextjs-app-router-cheatsheet.md)
+- [cheatsheets/nextjs-ssr-hydration.ru.md](cheatsheets/nextjs-ssr-hydration.ru.md) — SSR, гидратация, кэш, Server Actions, middleware, layout. Проговорить вслух раздел «Прогон»
 - SSG / SSR / ISR, `loading.tsx` / `error.tsx`, caching basics
 
 ### Tasks (2.5 ч)

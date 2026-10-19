@@ -143,19 +143,28 @@ function text(state: State): string {
 
 ## 6. Utility types — практические советы
 
-Утилиты держат производный тип привязанным к источнику. `Pick<User, "id" | "name">` последует за `User["id"]`, когда тот изменится. Скопированный руками интерфейс — нет. Если «публичный пользователь» — настоящее понятие, дай ему имя: `type PublicUser = Omit<User, "passwordHash">`.
+Utility types — это встроенные типы, которые строят новый тип из существующего. Я использую их, чтобы не копировать типы руками: если изменится `User`, все производные типы обновятся сами. Чаще всего это `Partial`, `Required`, `Readonly`, `Pick`, `Omit` и `Record`, а для функций — `ReturnType`, `Parameters` и `Awaited`.
 
 ```ts
-type UserPatch = Partial<Pick<User, "name" | "email">>;
-type PublicUser = Omit<User, "passwordHash">;
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+};
+
+type PublicUser = Omit<User, "passwordHash">;              // ответ API
+type CreateUserDto = Omit<User, "id" | "passwordHash">;     // тело POST
+type UpdateUserDto = Partial<Pick<User, "name" | "email">>; // тело PATCH
+type UsersById = Record<string, User>;                      // словарь
 ```
 
-- Для тела PATCH сначала `Pick` редактируемых ключей, потом `Partial`. `Partial<User>` заодно сделает необязательным `id`.
-- `Partial` и `Readonly` поверхностные, и `Partial` не добавляет `null`. С `exactOptionalPropertyTypes` тип `{ name?: string }` отвергает `{ name: undefined }`.
-- `Omit<A | B, "id">` схлопывается в `{ kind: "a" | "b" }`. `keyof` от union — только общие ключи, остальные поля исчезают. Сначала раздай: `T extends unknown ? Omit<T, K> : never`.
-- `Omit<User, "passwordHsh">` компилируется и ничего не удаляет, потому что `K extends keyof any`. `Pick` такую опечатку отвергает.
-- `as const satisfies Record<Role, string>` проверяет, что каждый ключ есть, и сохраняет литералы. Аннотация `Record<Role, string>` расширяет значения до `string`.
-- С `noUncheckedIndexedAccess` тип `record[key]` — это `T | undefined`. Обработай отсутствующий ключ.
-- `ReturnType` у перегрузки — это последняя сигнатура.
-- `Partial` руками — это `{ [K in keyof T]?: T[K] }`. `Pick` — `{ [P in K]: T[P] }`. Форма `{ [K in keyof T] }` раздаётся по union. `Pick` — нет: `Pick<A | B, "kind">` это `{ kind: "a" | "b" }`.
-- Утилита не заставит `JSON.parse` вернуть `User`. Это либо схема, либо `as`.
+- **Что делает каждая.** `Partial` — все поля необязательные. `Required` — все обязательные. `Readonly` — поля нельзя переприсвоить. `Pick` — взять нужные поля. `Omit` — убрать лишние. `Record<K, V>` — объект с ключами `K` и значениями `V`.
+- **PATCH.** Сначала `Pick` редактируемых полей, потом `Partial`. `Partial<User>` разрешил бы менять `id` и `passwordHash`.
+- **`Pick` или `Omit`.** `Pick` — когда нужно несколько полей: опечатка в ключе даёт ошибку компиляции. `Omit` — когда нужно убрать одно-два поля. Минус `Omit`: опечатку он не ловит и молча ничего не удаляет.
+- **Только верхний уровень.** `Partial` и `Readonly` не трогают вложенные объекты. `Readonly` — это проверка компилятора, объект в рантайме не замораживается (для этого есть `Object.freeze`).
+- **Функции.** `ReturnType<typeof fn>` и `Parameters<typeof fn>` берут типы из функции, чтобы их не дублировать. Для `async`-функции: `Awaited<ReturnType<typeof getUser>>` — это `User`.
+- **Union.** `Exclude<Status, "idle">` убирает вариант из union, `Extract` оставляет нужные, `NonNullable<T>` убирает `null` и `undefined`.
+- **Как они устроены.** Это mapped types, и их могут попросить написать руками: `type MyPartial<T> = { [K in keyof T]?: T[K] }` и `type MyPick<T, K extends keyof T> = { [P in K]: T[P] }`.
+- **Ловушка на уточнение.** `Omit` на union (`Omit<A | B, "id">`) теряет поля, которые есть не у всех вариантов. Для размеченных объединений пишут свой `DistributiveOmit`.
+- **Чего утилиты не делают.** Они работают только при компиляции и не проверяют данные из API. Для этого нужна валидация (Zod).

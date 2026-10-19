@@ -27,6 +27,7 @@
 ## Связанные материалы в репозитории
 
 - [React tricky answers (RU)](../react/tricky-react-interview-answers.ru.md)
+- [Next.js SSR и гидратация (RU)](cheatsheets/nextjs-ssr-hydration.ru.md)
 - [TypeScript](../typescript/typescript.md)
 - [Async JS](../async-js/asynchronous-javascript.md)
 - [Browser / networking](../browser-web/README.md)

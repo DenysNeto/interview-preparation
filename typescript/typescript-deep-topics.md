@@ -141,19 +141,28 @@ function text(state: State): string {
 
 ## 6. Utility types — practical advice
 
-Utilities keep a derived type attached to its source. `Pick<User, "id" | "name">` follows `User["id"]` when it changes. A hand-copied interface does not. If "public user" is a real concept, name it: `type PublicUser = Omit<User, "passwordHash">`.
+Utility types are built-in types that create a new type from an existing one. I use them so I don't copy types by hand: when `User` changes, every derived type updates on its own. The common ones are `Partial`, `Required`, `Readonly`, `Pick`, `Omit`, and `Record`, and for functions `ReturnType`, `Parameters`, and `Awaited`.
 
 ```ts
-type UserPatch = Partial<Pick<User, "name" | "email">>;
-type PublicUser = Omit<User, "passwordHash">;
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+};
+
+type PublicUser = Omit<User, "passwordHash">;              // API response
+type CreateUserDto = Omit<User, "id" | "passwordHash">;     // POST body
+type UpdateUserDto = Partial<Pick<User, "name" | "email">>; // PATCH body
+type UsersById = Record<string, User>;                      // lookup map
 ```
 
-- For a PATCH body, `Pick` the editable keys, then `Partial`. `Partial<User>` also makes `id` optional.
-- `Partial` and `Readonly` are shallow, and `Partial` does not add `null`. With `exactOptionalPropertyTypes`, `{ name?: string }` rejects `{ name: undefined }`.
-- `Omit<A | B, "id">` collapses to `{ kind: "a" | "b" }`. `keyof` of a union is only the shared keys, so the other fields disappear. Distribute first: `T extends unknown ? Omit<T, K> : never`.
-- `Omit<User, "passwordHsh">` compiles and removes nothing, because `K extends keyof any`. `Pick` rejects the typo.
-- `as const satisfies Record<Role, string>` checks that every key exists and keeps the literal values. Annotating `Record<Role, string>` widens the values to `string`.
-- With `noUncheckedIndexedAccess`, `record[key]` is `T | undefined`. Handle the missing key.
-- `ReturnType` of an overload is the last signature.
-- `Partial` by hand is `{ [K in keyof T]?: T[K] }`. `Pick` is `{ [P in K]: T[P] }`. `{ [K in keyof T] }` distributes over a union. `Pick` does not: `Pick<A | B, "kind">` is `{ kind: "a" | "b" }`.
-- A utility cannot make `JSON.parse` return `User`. That is a schema, or it is `as`.
+- **What each one does.** `Partial` makes every field optional. `Required` makes every field required. `Readonly` blocks reassignment. `Pick` keeps the fields you name. `Omit` removes them. `Record<K, V>` is an object with keys `K` and values `V`.
+- **PATCH.** `Pick` the editable fields first, then `Partial`. `Partial<User>` would allow changing `id` and `passwordHash`.
+- **`Pick` or `Omit`.** Use `Pick` when you need a few fields: a typo in a key is a compile error. Use `Omit` to remove one or two. The downside of `Omit`: it does not catch a typo and silently removes nothing.
+- **Top level only.** `Partial` and `Readonly` do not touch nested objects. `Readonly` is a compiler check; the object is not frozen at runtime (that is `Object.freeze`).
+- **Functions.** `ReturnType<typeof fn>` and `Parameters<typeof fn>` take types from a function so you don't duplicate them. For an `async` function: `Awaited<ReturnType<typeof getUser>>` is `User`.
+- **Unions.** `Exclude<Status, "idle">` removes a member, `Extract` keeps matching members, and `NonNullable<T>` removes `null` and `undefined`.
+- **How they work.** They are mapped types, and you may be asked to write one by hand: `type MyPartial<T> = { [K in keyof T]?: T[K] }` and `type MyPick<T, K extends keyof T> = { [P in K]: T[P] }`.
+- **Follow-up trap.** `Omit` on a union (`Omit<A | B, "id">`) loses the fields that are not shared by every member. For discriminated unions, people write their own `DistributiveOmit`.
+- **What they don't do.** They exist only at compile time and do not check API data. That needs validation (Zod).

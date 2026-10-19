@@ -1,5 +1,7 @@
 # Next.js App Router Cheatsheet
 
+Теория SSR, статики и гидратации, вопросами: [nextjs-ssr-hydration.ru.md](nextjs-ssr-hydration.ru.md).
+
 ## Mental model
 
 | Layer | Runs on | Can use hooks? | Can fetch secrets? |
